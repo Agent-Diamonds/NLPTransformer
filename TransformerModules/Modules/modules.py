@@ -33,6 +33,7 @@ class JointEmbedding(nn.Module):
         pos_emb = pos_emb.unsqueeze(0)
         return pos_emb
 
+
 class MultiHeadedAttention(nn.Module):
     
     def __init__(self, num_attn_heads, hidden_size, dropout_prob):
@@ -94,3 +95,20 @@ class MultiHeadedAttention(nn.Module):
     def _reshape_and_permute_back(self, context):
         context = context.permute(0, 2, 1, 3).contiguous().view(context.shape[0], -1, self.num_attn_heads * self.d_k)
         return context
+
+
+class PositionWiseFeedForward(nn.Module):
+    def __init__(self, hidden_size, dropout_prob):
+        super(PositionWiseFeedForward, self).__init__()
+        middle_size = 4 * hidden_size #per devlin
+        self.fc1 = nn.Linear(hidden_size, middle_size)
+        self.fc2 = nn.Linear(middle_size, hidden_size)
+        self.dropout = nn.Dropout(p=dropout_prob)
+        self.activation = nn.GELU()
+
+    def forward(self, x):
+        out = self.activation(self.fc1(x))
+        out = self.fc2(self.dropout(out))
+        return out
+
+
