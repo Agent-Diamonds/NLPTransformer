@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn 
+import torch.nn.functional as F
 import math
 
 class JointEmbedding(nn.Module):
@@ -32,4 +33,64 @@ class JointEmbedding(nn.Module):
         pos_emb = pos_emb.unsqueeze(0)
         return pos_emb
 
+class MultiHeadedAttention(nn.Module):
+    
+    def __init__(self, num_attn_heads, hidden_size, dropout_prob):
+        super(MultiHeadedAttention, self).__init__()
+        
+        
+        self.d_k = hidden_size // num_attn_heads
+        self.num_attn_heads = num_attn_heads
+        self.dropout = nn.Dropout(p=dropout_prob)
+        
+        #init the weights
+        self.query = torch.nn.Linear(hidden_size, hidden_size) #Q
+        self.key = torch.nn.Linear(hidden_size, hidden_size) #K
+        self.value = torch.nn.Linear(hidden_size, hidden_size)#V
+        self.W = torch.nn.Linear(hidden_size, hidden_size) #W
 
+    
+    def forward(self, query, key, value, attention_mask):
+        expanded_attention_mask = self._expand_attention_mask(attention_mask)
+    
+        query, key, value = self._linear_transform(query, key, value)
+        query, key, value = self._reshape_and_permute(query, key, value)
+    
+        scores = self._scaled_dot_product_attention(query, key, expanded_attention_mask)
+        weights = self._apply_softmax_and_dropout(scores)
+    
+        context = self._weighted_sum(weights, value)
+        context = self._reshape_and_permute_back(context)
+        return self.W(context)
+
+    def _expand_attention_mask(self, attention_mask):
+        expanded_attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+        return expanded_attention_mask.repeat(1, self.num_attn_heads, 1, 1)
+
+    def _linear_transform(self, query, key, value):
+        query, key, value = self.query(query), self.key(key), self.value(value)
+        return query, key, value
+
+    def _reshape_and_permute(self, query, key, value):
+        query = query.view(query.shape[0], -1, self.num_attn_heads, self.d_k).permute(0, 2, 1, 3)
+        key = key.view(key.shape[0], -1, self.num_attn_heads, self.d_k).permute(0, 2, 1, 3)
+        value = value.view(value.shape[0], -1, self.num_attn_heads, self.d_k).permute(0, 2, 1, 3)
+        return query, key, value
+
+    def _scaled_dot_product_attention(self, query, key, expanded_attention_mask):
+        scores = torch.matmul(query, key.permute(0, 1, 3, 2)) / math.sqrt(query.size(-1))
+        scores = scores.masked_fill(expanded_attention_mask == 0, 1e-9)
+        return scores
+
+    def _apply_softmax_and_dropout(self, scores):
+        weights = F.softmax(scores, dim=-1)
+        weights = self.dropout(weights)
+        return weights
+
+    def _weighted_sum(self, weights, value):
+        context = torch.matmul(weights, value)
+        return context
+
+    def _reshape_and_permute_back(self, context):
+        context = context.permute(0, 2, 1, 3).contiguous().view(context.shape[0], -1, self.num_attn_heads * self.d_k)
+        return context
