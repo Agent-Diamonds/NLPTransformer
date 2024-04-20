@@ -112,3 +112,24 @@ class PositionWiseFeedForward(nn.Module):
         return out
 
 
+class EncoderLayer(nn.Module):
+    def __init__(self, hidden_size, num_attn_heads, dropout_prob):
+        super(EncoderLayer, self).__init__()
+        self.layernorm = nn.LayerNorm(hidden_size) #normalizing
+        self.self_multihead = MultiHeadedAttention(num_attn_heads, hidden_size, dropout_prob)
+        self.feed_forward = PositionWiseFeedForward(hidden_size, dropout_prob)
+        self.dropout = nn.Dropout(p=dropout_prob)
+
+    def forward(self, embeddings, attention_mask):
+        #print(embeddings)
+        #print(mask)
+        attention = self.dropout(self.self_multihead(embeddings, embeddings, embeddings, attention_mask))
+        # residual layer
+        residual = self.layernorm(attention + embeddings)#residual connection and normalize after attention
+        feed_forward_out = self.dropout(self.feed_forward(residual))
+        encoded = self.layernorm(feed_forward_out + residual)#residual connection and normalize after ffnn
+        return encoded
+
+
+
+
