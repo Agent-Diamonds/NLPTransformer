@@ -131,5 +131,24 @@ class EncoderLayer(nn.Module):
         return encoded
 
 
+class EncoderTransfomer(nn.Module):
+    def __init__(self, vocab_size, hidden_size, num_layers, num_attn_heads, seq_length, dropout_prob, device):
+        super(EncoderTransfomer, self).__init__()
+        self.embedding = JointEmbedding(vocab_size=vocab_size,
+                                        hidden_size=hidden_size,
+                                        seq_len=seq_length,
+                                        dropout_prob=dropout_prob,
+                                        device=device)
+        self.hidden_size = hidden_size
+        # encoder layers init
+        self.encoder_layers = nn.ModuleList(
+            [EncoderLayer(hidden_size, num_attn_heads, dropout_prob) for _ in range(num_layers)])
+        self.num_attn_heads = num_attn_heads
 
+    def forward(self, x, segment_info, attention_mask):
+        x = self.embedding(x, segment_info)
+        # running over multiple transformer blocks
+        for encoder in self.encoder_layers:
+            x = encoder.forward(x, attention_mask)
+        return x
 
